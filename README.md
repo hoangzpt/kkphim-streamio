@@ -1,15 +1,15 @@
-# KKPhim Stremio Addon V3
+# KKPhim Stremio Addon V4
 
-V3 dùng các Vercel Functions riêng cho manifest/catalog/meta/stream để tránh lỗi rewrite/catch-all.
+V4 sửa lỗi 404 của Stremio khi gọi các URL bắt buộc có `.json`.
 
-Endpoints:
-- `/api/manifest.json`
-- `/api/catalog/movie/home.json`
-- `/api/catalog/movie/new.json`
-- `/api/catalog/series/series.json`
-- `/api/meta/movie/kkphim:<slug>.json`
-- `/api/stream/movie/kkphim:<slug>.json`
+Vercel rewrites:
+- `/api/manifest.json` -> `/api/manifest`
+- `/api/catalog/:type/:id.json` -> `/api/catalog/:type/:id`
+- `/api/meta/:type/:id.json` -> `/api/meta/:type/:id`
+- `/api/stream/:type/:id.json` -> `/api/stream/:type/:id`
 
-Deploy: thay toàn bộ source cũ bằng source trong ZIP rồi Redeploy Production.
+Sau khi thay source cũ và Redeploy Production, kiểm tra:
+1. `/api/manifest.json`
+2. `/api/catalog/movie/home.json`
 
-Kiểm tra manifest trước, sau đó catalog.
+Manifest phải hiện version 3.0.0 và catalog phải trả `metas`.

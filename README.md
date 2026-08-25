@@ -131,7 +131,34 @@ với 2 domain mình đoán sẵn (`phimapi.com`, `kkphim.com`) — mở file
 (ví dụ domain hiển thị trong link embed `ep.embed`, thường lộ ra domain
 player gốc).
 
-## 3b. Nếu gặp lỗi "404: NOT_FOUND" trên domain Vercel
+## 3c. Lỗi "Streaming server is not available" khi xem trên web.stremio.com / iOS
+
+Bản Web (và iOS, vì trên đó chỉ dùng được bản Web) không chạy "Streaming
+Server" nền như bản desktop, nên nó **không thể** tự thêm header
+`Referer`/`Origin` mà addon yêu cầu — nếu addon khai báo
+`behaviorHints.proxyHeaders`, Stremio Web sẽ chặn hẳn và báo lỗi này thay vì
+phát.
+
+Bản cập nhật này bỏ hẳn cách "nhờ Stremio thêm header" và thay bằng
+**proxy riêng trong addon** (`/hls-proxy`, file `api/proxy.js`): addon tự
+tải file `.m3u8`/đoạn video từ CDN với đúng header, rồi trả lại link "sạch"
+để phát trực tiếp — không cần Streaming Server nữa, chạy được cả trên web,
+iOS lẫn desktop.
+
+Với mỗi tập phim giờ bạn sẽ thấy các lựa chọn:
+```
+Server #1 - Tập 1 (qua proxy, referer: phimapi.com)
+Server #1 - Tập 1 (qua proxy, referer: kkphim.com)
+Server #1 - Tập 1 (link trực tiếp)
+```
+Thử lần lượt cho tới khi có dòng phát được — dòng đó chính là referer đúng.
+
+Lưu ý: vì giờ video đi qua server addon (Vercel) rồi mới tới máy bạn, tốc độ
+phát phụ thuộc thêm vào băng thông Vercel — với gói Hobby free vẫn đủ dùng
+cho xem cá nhân, nhưng nếu addon có nhiều người dùng cùng lúc sẽ tốn quota
+nhanh hơn cách phát thẳng.
+
+## 3d. Nếu gặp lỗi "404: NOT_FOUND" trên domain Vercel
 
 Vercel có thể tự rút gọn route của `api/index.js` thành `/api` thay vì
 `/api/index`, gây lệch với rule rewrite. Vì vậy function trong bản này đã

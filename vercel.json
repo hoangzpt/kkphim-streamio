@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/hls-proxy", "destination": "/api/proxy" },
     { "source": "/(.*)", "destination": "/api/addon" }
   ]
 }

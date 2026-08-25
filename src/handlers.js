@@ -107,12 +107,24 @@ async function metaHandler({ id }) {
 }
 
 // Many Vietnamese movie CDNs reject requests that don't carry a Referer/Origin
-// from the "expected" site (hotlink protection) — without it, playback just
-// buffers forever instead of erroring out clearly. We attach candidate
-// headers via behaviorHints.proxyHeaders (the standard Stremio mechanism for
-// this) and also offer a plain, header-less variant so the user can pick
-// whichever actually works for a given server.
+// from the "expected" site (hotlink protection). Browsers can't set custom
+// Referer headers on a <video>/hls.js request, and Stremio's own
+// header-injection mechanism (behaviorHints.proxyHeaders) only works when
+// Stremio's local Streaming Server is running — which isn't available on
+// Stremio Web / iOS. So instead we route playback through our own /hls-proxy
+// endpoint (api/proxy.js): it fetches the real stream server-side with the
+// right headers and serves back a "clean" URL any player can use.
 const REFERER_CANDIDATES = ["https://phimapi.com/", "https://kkphim.com/"];
+
+const PUBLIC_BASE =
+  process.env.PUBLIC_BASE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://127.0.0.1:7000");
+
+function proxyUrl(target, ref) {
+  const qs = new URLSearchParams({ url: target });
+  if (ref) qs.set("ref", ref);
+  return `${PUBLIC_BASE}/hls-proxy?${qs.toString()}`;
+}
 
 async function streamHandler({ id }) {
   const { slug, episodeSlug } = parseId(id);
@@ -129,34 +141,25 @@ async function streamHandler({ id }) {
     const label = `${server.serverName || "Server"}${ep.name ? " - Tập " + ep.name : ""}`;
 
     if (ep.m3u8) {
-      // One variant per referer candidate, so if the first fails to load,
-      // the user can try the next from the streams list.
+      // One proxied variant per referer candidate — try the first, and if
+      // it fails to load, pick the next one from the streams list.
       for (const referer of REFERER_CANDIDATES) {
         streams.push({
-          title: `${label} (referer: ${new URL(referer).hostname})`,
-          url,
-          behaviorHints: {
-            bingeGroup: `kkphim-${slug}`,
-            proxyHeaders: {
-              request: {
-                Referer: referer,
-                Origin: referer.replace(/\/$/, ""),
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-              },
-            },
-          },
+          title: `${label} (qua proxy, referer: ${new URL(referer).hostname})`,
+          url: proxyUrl(url, referer),
+          behaviorHints: { bingeGroup: `kkphim-${slug}` },
         });
       }
-      // Plain, no extra headers — some servers don't need any.
+      // Direct link with no proxy/header — in case the CDN doesn't
+      // actually require one for this particular server.
       streams.push({
-        title: `${label} (không header)`,
+        title: `${label} (link trực tiếp)`,
         url,
         behaviorHints: { bingeGroup: `kkphim-${slug}` },
       });
     } else {
-      // Only an embed/iframe URL is available — Stremio can't play this
-      // in its built-in player, flag it so it's opened externally instead.
+      // Only an embed/iframe URL is available — this can't be played in
+      // Stremio's built-in player at all, flag it for external opening.
       streams.push({
         title: `${label} (mở ngoài trình duyệt)`,
         url,

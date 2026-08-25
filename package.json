@@ -2,7 +2,7 @@
   "name": "kkphim-stremio-addon",
   "version": "1.0.0",
   "description": "Stremio addon xem phim Vietsub/Thuyet minh/Long tieng dua tren API phimapi.com (KKPhim)",
-  "main": "api/index.js",
+  "main": "api/addon.js",
   "license": "MIT",
   "scripts": {
     "start": "node local.js",

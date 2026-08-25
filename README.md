@@ -7,7 +7,7 @@ tìm kiếm và lọc theo thể loại.
 ## Cấu trúc dự án
 
 ```
-api/index.js       -> entrypoint serverless cho Vercel (bắt mọi request)
+api/addon.js        -> entrypoint serverless cho Vercel (bắt mọi request)
 src/manifest.js     -> khai báo manifest.json + danh sách catalog/thể loại
 src/handlers.js     -> xử lý catalog / meta / stream cho Stremio
 src/kkphimApi.js     -> gọi API phimapi.com, chuẩn hoá dữ liệu, cache 5 phút
@@ -101,6 +101,54 @@ phải trên máy bạn.
 - Vercel không lưu state lâu dài giữa các lần gọi (mỗi function có thể bị
   "cold start"), nên addon có cache 5 phút trong RAM để giảm số lần gọi API
   gốc — cache này sẽ mất khi function "nguội", đó là bình thường.
+
+## 3a. Nếu bấm Play nhưng phim cứ load/buffer mãi không chạy
+
+Nguyên nhân thường gặp nhất: CDN chứa file `.m3u8`/video có chặn hotlink,
+chỉ cho phép phát khi request có header `Referer`/`Origin` đúng domain của
+trang gốc. Nếu thiếu header này, CDN không trả lỗi rõ ràng mà chỉ "treo",
+khiến Stremio hiện loading vô hạn.
+
+Bản cập nhật này đã tự động tạo **nhiều lựa chọn stream cho cùng 1 server**
+(khác nhau ở header `Referer` được gửi kèm, cộng thêm 1 bản không header) —
+khi bấm vào 1 tập phim, bạn sẽ thấy danh sách vài dòng cho mỗi server, ví dụ:
+
+```
+Server #1 - Tập 1 (referer: phimapi.com)
+Server #1 - Tập 1 (referer: kkphim.com)
+Server #1 - Tập 1 (không header)
+```
+
+Cứ thử lần lượt từng dòng — dòng nào phát được thì từ đó dùng đúng dòng đó
+cho các tập tiếp theo. Nếu muốn xác nhận trước bằng tay: copy link `.m3u8`
+(bấm vào nút "..." > thông tin stream trong Stremio, hoặc mở DevTools) rồi
+thử mở bằng VLC → Media → Open Network Stream để kiểm tra link có phát được
+không.
+
+Nếu vẫn không dòng nào chạy được, khả năng CDN yêu cầu domain Referer khác
+với 2 domain mình đoán sẵn (`phimapi.com`, `kkphim.com`) — mở file
+`src/handlers.js`, tìm biến `REFERER_CANDIDATES` và thêm domain đúng vào
+(ví dụ domain hiển thị trong link embed `ep.embed`, thường lộ ra domain
+player gốc).
+
+## 3b. Nếu gặp lỗi "404: NOT_FOUND" trên domain Vercel
+
+Vercel có thể tự rút gọn route của `api/index.js` thành `/api` thay vì
+`/api/index`, gây lệch với rule rewrite. Vì vậy function trong bản này đã
+được đặt tên là `api/addon.js` và `vercel.json` trỏ rewrite tới `/api/addon`
+— tránh hẳn sự mơ hồ đó. Nếu bạn đổi tên file, nhớ sửa `destination` trong
+`vercel.json` cho khớp.
+
+Nếu vẫn gặp 404 sau khi deploy lại:
+- Vào Vercel dashboard → project → tab **Deployments**, mở deployment mới
+  nhất, kiểm tra trạng thái là **Ready** (không phải Error).
+- Xem tab **Functions** của deployment đó — phải thấy `api/addon.js` được
+  liệt kê. Nếu không thấy, build đã không nhận diện ra function (thường do
+  thiếu `package.json` ở đúng thư mục gốc project trên Vercel).
+- Nếu bạn deploy qua GitHub, đảm bảo **Root Directory** trong Project
+  Settings trỏ đúng vào thư mục chứa `package.json` và `vercel.json` (nếu
+  bạn để repo chỉ chứa đúng nội dung thư mục `kkphim-stremio-addon/`, Root
+  Directory nên để trống/mặc định).
 
 ## 4. Một vài điểm cần lưu ý về dữ liệu
 

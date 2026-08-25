@@ -106,6 +106,14 @@ async function metaHandler({ id }) {
   return { meta };
 }
 
+// Many Vietnamese movie CDNs reject requests that don't carry a Referer/Origin
+// from the "expected" site (hotlink protection) — without it, playback just
+// buffers forever instead of erroring out clearly. We attach candidate
+// headers via behaviorHints.proxyHeaders (the standard Stremio mechanism for
+// this) and also offer a plain, header-less variant so the user can pick
+// whichever actually works for a given server.
+const REFERER_CANDIDATES = ["https://phimapi.com/", "https://kkphim.com/"];
+
 async function streamHandler({ id }) {
   const { slug, episodeSlug } = parseId(id);
   const detail = await kkphim.getDetail(slug);
@@ -118,14 +126,43 @@ async function streamHandler({ id }) {
     if (!ep) continue;
     const url = ep.m3u8 || ep.embed;
     if (!url) continue;
-    streams.push({
-      title: `${server.serverName || "Server"}${ep.name ? " - Tập " + ep.name : ""}`,
-      url,
-      behaviorHints: {
-        notWebReady: !ep.m3u8,
-        bingeGroup: `kkphim-${slug}`,
-      },
-    });
+    const label = `${server.serverName || "Server"}${ep.name ? " - Tập " + ep.name : ""}`;
+
+    if (ep.m3u8) {
+      // One variant per referer candidate, so if the first fails to load,
+      // the user can try the next from the streams list.
+      for (const referer of REFERER_CANDIDATES) {
+        streams.push({
+          title: `${label} (referer: ${new URL(referer).hostname})`,
+          url,
+          behaviorHints: {
+            bingeGroup: `kkphim-${slug}`,
+            proxyHeaders: {
+              request: {
+                Referer: referer,
+                Origin: referer.replace(/\/$/, ""),
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+              },
+            },
+          },
+        });
+      }
+      // Plain, no extra headers — some servers don't need any.
+      streams.push({
+        title: `${label} (không header)`,
+        url,
+        behaviorHints: { bingeGroup: `kkphim-${slug}` },
+      });
+    } else {
+      // Only an embed/iframe URL is available — Stremio can't play this
+      // in its built-in player, flag it so it's opened externally instead.
+      streams.push({
+        title: `${label} (mở ngoài trình duyệt)`,
+        url,
+        behaviorHints: { notWebReady: true, bingeGroup: `kkphim-${slug}` },
+      });
+    }
   }
 
   return { streams };

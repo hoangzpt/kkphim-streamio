@@ -1,11 +1,15 @@
 {
-  "name": "kkphim-stremio-addon-v3",
-  "version": "3.0.0",
-  "private": true,
-  "engines": {
-    "node": ">=18"
-  },
+  "name": "kkphim-stremio-addon",
+  "version": "1.0.0",
+  "description": "Stremio addon xem phim Vietsub/Thuyet minh/Long tieng dua tren API phimapi.com (KKPhim)",
+  "main": "api/index.js",
+  "license": "MIT",
   "scripts": {
-    "dev": "vercel dev"
+    "start": "node local.js",
+    "dev": "node local.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.10",
+    "node-fetch": "^2.7.0"
   }
 }

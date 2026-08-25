@@ -1,21 +1,5 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    {
-      "source": "/api/catalog/:type/:id.json",
-      "destination": "/api/catalog/:type/:id"
-    },
-    {
-      "source": "/api/meta/:type/:id.json",
-      "destination": "/api/meta/:type/:id"
-    },
-    {
-      "source": "/api/stream/:type/:id.json",
-      "destination": "/api/stream/:type/:id"
-    },
-    {
-      "source": "/api/manifest.json",
-      "destination": "/api/manifest"
-    }
+    { "source": "/(.*)", "destination": "/api/index" }
   ]
 }

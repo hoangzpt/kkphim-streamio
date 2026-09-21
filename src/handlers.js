@@ -1,4 +1,5 @@
 const kkphim = require("./kkphimApi");
+const imdbMapper = require("./imdbMapper");
 
 const TYPE_LIST_MAP = {
   "kkphim-phim-le": "phim-le",
@@ -163,13 +164,7 @@ async function metaHandler({ id }) {
 }
 
 // Many Vietnamese movie CDNs reject requests that don't carry a Referer/Origin
-// from the "expected" site (hotlink protection). Browsers can't set custom
-// Referer headers on a <video>/hls.js request, and Stremio's own
-// header-injection mechanism (behaviorHints.proxyHeaders) only works when
-// Stremio's local Streaming Server is running — which isn't available on
-// Stremio Web / iOS. So instead we route playback through our own /hls-proxy
-// endpoint (api/proxy.js): it fetches the real stream server-side with the
-// right headers and serves back a "clean" URL any player can use.
+// from the "expected" site (hotlink protection).
 const REFERER_CANDIDATES = ["https://phimapi.com/", "https://kkphim.com/"];
 
 const PUBLIC_BASE =
@@ -182,46 +177,119 @@ function proxyUrl(target, ref) {
   return `${PUBLIC_BASE}/hls-proxy?${qs.toString()}`;
 }
 
-async function streamHandler({ id }) {
+function findEpisode(serverItems, targetEpisode) {
+  if (!serverItems || serverItems.length === 0) return null;
+  if (!targetEpisode) return serverItems[0];
+
+  // 1. Tìm theo số tập trong ep.name (ví dụ: "Tập 1", "01", "1")
+  const matchNum = serverItems.find((ep) => {
+    const num = String(ep.name).replace(/\D/g, "");
+    return num && parseInt(num, 10) === targetEpisode;
+  });
+  if (matchNum) return matchNum;
+
+  // 2. Tìm theo số trong ep.slug (ví dụ: "tap-1", "tap-01")
+  const matchSlug = serverItems.find((ep) => {
+    const slugNum = ep.slug.replace(/\D/g, "");
+    return slugNum && parseInt(slugNum, 10) === targetEpisode;
+  });
+  if (matchSlug) return matchSlug;
+
+  // 3. Fallback theo chỉ mục (0-indexed)
+  if (serverItems[targetEpisode - 1]) {
+    return serverItems[targetEpisode - 1];
+  }
+
+  return serverItems[0];
+}
+
+function buildStreamsForEpisode(server, ep, slug) {
+  const url = ep.m3u8 || ep.embed;
+  if (!url) return [];
+  const streams = [];
+  const serverName = server.serverName || "Server VIP";
+  let epName = ep.name ? String(ep.name).trim() : "";
+  if (
+    epName &&
+    !epName.toLowerCase().startsWith("tập") &&
+    !epName.toLowerCase().startsWith("full")
+  ) {
+    epName = "Tập " + epName;
+  }
+  const label = `[KKPhim Vietsub] ${serverName}${epName ? " - " + epName : ""}`;
+
+  if (ep.m3u8) {
+    for (const referer of REFERER_CANDIDATES) {
+      streams.push({
+        title: `${label} (qua proxy)`,
+        url: proxyUrl(url, referer),
+        behaviorHints: {
+          bingeGroup: `kkphim-${slug}`,
+        },
+      });
+    }
+
+    // Direct stream link kèm proxyHeaders (tiết kiệm 100% băng thông server cho Stremio app)
+    streams.push({
+      title: `${label} (trực tiếp)`,
+      url,
+      behaviorHints: {
+        bingeGroup: `kkphim-${slug}`,
+        proxyHeaders: {
+          request: {
+            Referer: "https://phimapi.com/",
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          },
+        },
+      },
+    });
+  } else {
+    streams.push({
+      title: `${label} (mở ngoài trình duyệt)`,
+      url,
+      behaviorHints: { notWebReady: true, bingeGroup: `kkphim-${slug}` },
+    });
+  }
+
+  return streams;
+}
+
+async function streamHandler({ type, id }) {
+  // 1. Xử lý khi nhận request từ phim có ID IMDb (tt...)
+  if (id.startsWith("tt")) {
+    const mapped = await imdbMapper.resolveImdb(type, id);
+    if (!mapped || !mapped.slug) {
+      return { streams: [] };
+    }
+
+    const detail = await kkphim.getDetail(mapped.slug);
+    const streams = [];
+
+    for (const server of detail.episodes || []) {
+      const ep = mapped.episode
+        ? findEpisode(server.items, mapped.episode)
+        : server.items[0];
+      if (!ep) continue;
+
+      streams.push(...buildStreamsForEpisode(server, ep, mapped.slug));
+    }
+
+    return { streams };
+  }
+
+  // 2. Xử lý khi nhận request từ catalog KKPhim (kkphim:{slug})
   const { slug, episodeSlug } = parseId(id);
   const detail = await kkphim.getDetail(slug);
 
   const streams = [];
-  for (const server of detail.episodes) {
+  for (const server of detail.episodes || []) {
     const ep = episodeSlug
       ? server.items.find((e) => e.slug === episodeSlug)
       : server.items[0];
     if (!ep) continue;
-    const url = ep.m3u8 || ep.embed;
-    if (!url) continue;
-    const label = `${server.serverName || "Server"}${ep.name ? " - Tập " + ep.name : ""}`;
 
-    if (ep.m3u8) {
-      // One proxied variant per referer candidate — try the first, and if
-      // it fails to load, pick the next one from the streams list.
-      for (const referer of REFERER_CANDIDATES) {
-        streams.push({
-          title: `${label} (qua proxy, referer: ${new URL(referer).hostname})`,
-          url: proxyUrl(url, referer),
-          behaviorHints: { bingeGroup: `kkphim-${slug}` },
-        });
-      }
-      // Direct link with no proxy/header — in case the CDN doesn't
-      // actually require one for this particular server.
-      streams.push({
-        title: `${label} (link trực tiếp)`,
-        url,
-        behaviorHints: { bingeGroup: `kkphim-${slug}` },
-      });
-    } else {
-      // Only an embed/iframe URL is available — this can't be played in
-      // Stremio's built-in player at all, flag it for external opening.
-      streams.push({
-        title: `${label} (mở ngoài trình duyệt)`,
-        url,
-        behaviorHints: { notWebReady: true, bingeGroup: `kkphim-${slug}` },
-      });
-    }
+    streams.push(...buildStreamsForEpisode(server, ep, slug));
   }
 
   return { streams };

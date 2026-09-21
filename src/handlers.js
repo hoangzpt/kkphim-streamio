@@ -3,13 +3,23 @@ const kkphim = require("./kkphimApi");
 const TYPE_LIST_MAP = {
   "kkphim-phim-le": "phim-le",
   "kkphim-phim-bo": "phim-bo",
+  "kkphim-phim-chieu-rap": "phim-chieu-rap",
   "kkphim-hoat-hinh": "hoat-hinh",
   "kkphim-tv-shows": "tv-shows",
+  "kkphim-thuyet-minh": "phim-thuyet-minh",
+  "kkphim-long-tieng": "phim-long-tieng",
+};
+
+const QUICK_COUNTRY_MAP = {
+  "kkphim-quoc-gia-han-quoc": "han-quoc",
+  "kkphim-quoc-gia-trung-quoc": "trung-quoc",
+  "kkphim-quoc-gia-au-my": "au-my",
 };
 
 function toStremioType(item) {
-  // "single" = phim lẻ (1 tập) -> movie, everything else has multiple episodes -> series
-  return item.type === "single" ? "movie" : "series";
+  // "single" = phim lẻ (1 tập) -> movie
+  if (item.type === "single" || item.episodeCurrent === "Full") return "movie";
+  return "series";
 }
 
 function itemToMeta(item) {
@@ -32,21 +42,67 @@ async function catalogHandler({ type, id, extra }) {
   let result;
   if (extra.search) {
     result = await kkphim.search(extra.search, page);
-  } else if (extra.genre) {
-    const genreList = await kkphim.genres();
-    const match = genreList.find(
-      (g) => g.name.toLowerCase() === String(extra.genre).toLowerCase()
+  } else if (id === "kkphim-theo-nam") {
+    // Dropdown genre ở catalog này chứa năm phát hành
+    const year = extra.genre || String(new Date().getFullYear());
+    result = await kkphim.listByYear(year, page);
+  } else if (id === "kkphim-theo-quoc-gia") {
+    // Dropdown genre ở catalog này chứa tên quốc gia
+    const targetCountry = extra.genre || "Hàn Quốc";
+    const countryList = await kkphim.countries();
+    const match = countryList.find(
+      (c) => c.name.toLowerCase() === String(targetCountry).toLowerCase()
     );
-    const slug = match ? match.slug : slugify(extra.genre);
-    result = await kkphim.listByGenre(slug, page);
+    const slug = match ? match.slug : slugify(targetCountry);
+    result = await kkphim.listByCountry(slug, page);
+  } else if (QUICK_COUNTRY_MAP[id]) {
+    const countrySlug = QUICK_COUNTRY_MAP[id];
+    if (extra.genre) {
+      const genreList = await kkphim.genres();
+      const match = genreList.find(
+        (g) => g.name.toLowerCase() === String(extra.genre).toLowerCase()
+      );
+      const categorySlug = match ? match.slug : slugify(extra.genre);
+      const typeList = type === "movie" ? "phim-le" : "phim-bo";
+      result = await kkphim.listByType(typeList, {
+        page,
+        country: countrySlug,
+        category: categorySlug,
+        sortField: "modified.time",
+      });
+    } else {
+      result = await kkphim.listByCountry(countrySlug, page);
+    }
   } else if (id === "kkphim-phim-moi") {
-    result = await kkphim.listNewlyUpdated(page);
+    if (extra.genre) {
+      const genreList = await kkphim.genres();
+      const match = genreList.find(
+        (g) => g.name.toLowerCase() === String(extra.genre).toLowerCase()
+      );
+      const slug = match ? match.slug : slugify(extra.genre);
+      result = await kkphim.listByGenre(slug, page);
+    } else {
+      result = await kkphim.listNewlyUpdated(page);
+    }
   } else {
-    const typeList = TYPE_LIST_MAP[id];
-    result = await kkphim.listByType(typeList, { page, sortField: "modified.time" });
+    const typeList = TYPE_LIST_MAP[id] || "phim-le";
+    if (extra.genre) {
+      const genreList = await kkphim.genres();
+      const match = genreList.find(
+        (g) => g.name.toLowerCase() === String(extra.genre).toLowerCase()
+      );
+      const categorySlug = match ? match.slug : slugify(extra.genre);
+      result = await kkphim.listByType(typeList, {
+        page,
+        category: categorySlug,
+        sortField: "modified.time",
+      });
+    } else {
+      result = await kkphim.listByType(typeList, { page, sortField: "modified.time" });
+    }
   }
 
-  const metas = result.items
+  const metas = (result && result.items ? result.items : [])
     .filter((it) => toStremioType(it) === type)
     .map(itemToMeta);
 

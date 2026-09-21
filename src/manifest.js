@@ -1,64 +1,111 @@
 const kkphim = require("./kkphimApi");
 
-const FALLBACK_GENRES = [
-  { name: "Hành Động", slug: "hanh-dong" },
-  { name: "Tình Cảm", slug: "tinh-cam" },
-  { name: "Hài Hước", slug: "hai-huoc" },
-  { name: "Cổ Trang", slug: "co-trang" },
-  { name: "Tâm Lý", slug: "tam-ly" },
-  { name: "Hình Sự", slug: "hinh-su" },
-  { name: "Chiến Tranh", slug: "chien-tranh" },
-  { name: "Thể Thao", slug: "the-thao" },
-  { name: "Võ Thuật", slug: "vo-thuat" },
-  { name: "Viễn Tưởng", slug: "vien-tuong" },
-  { name: "Phiêu Lưu", slug: "phieu-luu" },
-  { name: "Khoa Học", slug: "khoa-hoc" },
-  { name: "Kinh Dị", slug: "kinh-di" },
-  { name: "Âm Nhạc", slug: "am-nhac" },
-  { name: "Thần Thoại", slug: "than-thoai" },
-  { name: "Tài Liệu", slug: "tai-lieu" },
-  { name: "Gia Đình", slug: "gia-dinh" },
-  { name: "Chính Kịch", slug: "chinh-kich" },
-  { name: "Bí Ẩn", slug: "bi-an" },
-  { name: "Học Đường", slug: "hoc-duong" },
+const POPULAR_GENRES = [
+  "Hành Động",
+  "Tình Cảm",
+  "Hài Hước",
+  "Cổ Trang",
+  "Tâm Lý",
+  "Hình Sự",
+  "Chiến Tranh",
+  "Võ Thuật",
+  "Viễn Tưởng",
+  "Phiêu Lưu",
+  "Khoa Học",
+  "Kinh Dị",
+  "Âm Nhạc",
+  "Thần Thoại",
+  "Tài Liệu",
+  "Gia Đình",
+  "Chính Kịch",
+  "Bí Ẩn",
+  "Học Đường",
 ];
 
-function buildCatalogEntry(id, name, types, genreOptions) {
+const POPULAR_COUNTRIES = [
+  "Hàn Quốc",
+  "Trung Quốc",
+  "Âu Mỹ",
+  "Nhật Bản",
+  "Thái Lan",
+  "Việt Nam",
+  "Đài Loan",
+  "Hồng Kông",
+  "Ấn Độ",
+  "Anh",
+  "Pháp",
+  "Tây Ban Nha",
+  "Nga",
+];
+
+const POPULAR_YEARS = [
+  "2026",
+  "2025",
+  "2024",
+  "2023",
+  "2022",
+  "2021",
+  "2020",
+  "2019",
+  "2018",
+  "2015",
+  "2010",
+];
+
+function buildCatalogEntry(id, name, types, filterOptions) {
   return types.map((type) => ({
     id,
     type,
     name,
     extra: [
       { name: "search" },
-      { name: "genre", options: genreOptions, isRequired: false },
+      ...(filterOptions ? [{ name: "genre", options: filterOptions, isRequired: false }] : []),
       { name: "skip", isRequired: false },
     ],
   }));
 }
 
 async function buildManifest() {
-  let genreOptions = FALLBACK_GENRES.map((g) => g.name);
+  let genreOptions = POPULAR_GENRES;
+  let countryOptions = POPULAR_COUNTRIES;
+
   try {
     const list = await kkphim.genres();
-    if (list && list.length) genreOptions = list.map((g) => g.name);
+    if (list && list.length) {
+      // Giữ tối đa 20 thể loại phổ biến để manifest không bị vượt giới hạn 8KB của Stremio
+      const names = list.map((g) => g.name);
+      if (names.length <= 20) genreOptions = names;
+    }
   } catch (e) {
     // keep fallback
   }
 
   const catalogs = [
+    // 1. Nhóm danh mục chính
     ...buildCatalogEntry("kkphim-phim-moi", "KKPhim: Mới Cập Nhật", ["movie", "series"], genreOptions),
     ...buildCatalogEntry("kkphim-phim-le", "KKPhim: Phim Lẻ", ["movie"], genreOptions),
     ...buildCatalogEntry("kkphim-phim-bo", "KKPhim: Phim Bộ", ["series"], genreOptions),
-    ...buildCatalogEntry("kkphim-hoat-hinh", "KKPhim: Hoạt Hình", ["series"], genreOptions),
+    ...buildCatalogEntry("kkphim-phim-chieu-rap", "KKPhim: Phim Chiếu Rạp", ["movie"], genreOptions),
+    ...buildCatalogEntry("kkphim-hoat-hinh", "KKPhim: Hoạt Hình", ["series", "movie"], genreOptions),
     ...buildCatalogEntry("kkphim-tv-shows", "KKPhim: TV Shows", ["series"], genreOptions),
+
+    // 2. Nhóm phân loại Thuyết minh & Lồng tiếng
+    ...buildCatalogEntry("kkphim-thuyet-minh", "KKPhim: Thuyết Minh", ["movie", "series"], genreOptions),
+    ...buildCatalogEntry("kkphim-long-tieng", "KKPhim: Lồng Tiếng", ["movie", "series"], genreOptions),
+
+    // 3. Danh mục lọc theo Quốc Gia (dropdown genre sẽ hiển thị danh sách Quốc gia)
+    ...buildCatalogEntry("kkphim-theo-quoc-gia", "KKPhim: Theo Quốc Gia", ["movie", "series"], countryOptions),
+
+    // 4. Danh mục lọc theo Năm phát hành (dropdown genre sẽ hiển thị danh sách Năm)
+    ...buildCatalogEntry("kkphim-theo-nam", "KKPhim: Theo Năm", ["movie", "series"], POPULAR_YEARS),
   ];
 
   return {
     id: "org.kkphim.stremio.addon",
-    version: "1.0.0",
+    version: "1.1.0",
     name: "KKPhim Vietsub",
     description:
-      "Xem phim Vietsub, Thuyết Minh, Lồng Tiếng cập nhật từ KKPhim (phimapi.com). Gồm phim lẻ, phim bộ, hoạt hình, TV shows, tìm kiếm và lọc theo thể loại.",
+      "Xem phim Vietsub, Thuyết Minh, Lồng Tiếng từ KKPhim (phimapi.com). Gồm phim chiếu rạp, phim lẻ, phim bộ, hoạt hình, lọc theo Quốc gia, Năm và Thể loại.",
     logo: "https://phimimg.com/favicon.ico",
     resources: ["catalog", "meta", "stream"],
     types: ["movie", "series"],
@@ -71,4 +118,9 @@ async function buildManifest() {
   };
 }
 
-module.exports = { buildManifest, FALLBACK_GENRES };
+module.exports = {
+  buildManifest,
+  POPULAR_GENRES,
+  POPULAR_COUNTRIES,
+  POPULAR_YEARS,
+};

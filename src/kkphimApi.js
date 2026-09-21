@@ -71,11 +71,18 @@ async function listByCountry(slug, page = 1) {
   return normalizeList(await cachedGet(url));
 }
 
+/** Browse by release year */
+async function listByYear(year, page = 1) {
+  const url = `${BASE}/v1/api/nam/${year}?page=${page}`;
+  return normalizeList(await cachedGet(url));
+}
+
 /** Genre catalog (id/name/slug) */
 async function genres() {
   try {
     const data = await cachedGet(`${BASE}/the-loai`);
-    return Array.isArray(data) ? data : [];
+    const items = data && data.data && data.data.items ? data.data.items : (Array.isArray(data) ? data : []);
+    return Array.isArray(items) ? items : [];
   } catch (e) {
     return [];
   }
@@ -85,7 +92,8 @@ async function genres() {
 async function countries() {
   try {
     const data = await cachedGet(`${BASE}/quoc-gia`);
-    return Array.isArray(data) ? data : [];
+    const items = data && data.data && data.data.items ? data.data.items : (Array.isArray(data) ? data : []);
+    return Array.isArray(items) ? items : [];
   } catch (e) {
     return [];
   }
@@ -172,6 +180,7 @@ module.exports = {
   search,
   listByGenre,
   listByCountry,
+  listByYear,
   genres,
   countries,
   getDetail,

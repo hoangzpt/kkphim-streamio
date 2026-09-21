@@ -219,31 +219,25 @@ function buildStreamsForEpisode(server, ep, slug) {
   const label = `[KKPhim Vietsub] ${serverName}${epName ? " - " + epName : ""}`;
 
   if (ep.m3u8) {
+    // 1. LINK TRỰC TIẾP ĐƯỢC ƯU TIÊN SỐ 1 (Phát mượt, không lỗi video not supported, không lag)
+    streams.push({
+      title: `${label} (link trực tiếp)`,
+      url,
+      behaviorHints: {
+        bingeGroup: `kkphim-${slug}`,
+      },
+    });
+
+    // 2. Link qua Proxy làm phương án dự phòng
     for (const referer of REFERER_CANDIDATES) {
       streams.push({
-        title: `${label} (qua proxy)`,
+        title: `${label} (qua proxy, referer: ${new URL(referer).hostname})`,
         url: proxyUrl(url, referer),
         behaviorHints: {
           bingeGroup: `kkphim-${slug}`,
         },
       });
     }
-
-    // Direct stream link kèm proxyHeaders (tiết kiệm 100% băng thông server cho Stremio app)
-    streams.push({
-      title: `${label} (trực tiếp)`,
-      url,
-      behaviorHints: {
-        bingeGroup: `kkphim-${slug}`,
-        proxyHeaders: {
-          request: {
-            Referer: "https://phimapi.com/",
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-          },
-        },
-      },
-    });
   } else {
     streams.push({
       title: `${label} (mở ngoài trình duyệt)`,

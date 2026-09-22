@@ -224,6 +224,39 @@ async function metaHandler({ id }) {
     } catch (e) {}
   }
 
+  const directors = normalizeCast(detail.director);
+  const genres = (detail.category || []).map((c) => c.name);
+
+  // Tạo các liên kết (links) chuẩn Stremio để hiển thị các nút bấm có thể click cho CAST, DIRECTORS, GENRES
+  const links = [];
+
+  for (const genre of genres) {
+    links.push({
+      name: genre,
+      category: "Genres",
+      url: `stremio:///search?search=${encodeURIComponent(genre)}`,
+    });
+  }
+
+  for (const actor of cast) {
+    links.push({
+      name: actor,
+      category: "Cast",
+      url: `stremio:///search?search=${encodeURIComponent(actor)}`,
+    });
+  }
+
+  for (const dir of directors) {
+    links.push({
+      name: dir,
+      category: "Directors",
+      url: `stremio:///search?search=${encodeURIComponent(dir)}`,
+    });
+  }
+
+  // Chuẩn hóa runtime: chỉ hiển thị nếu có số
+  const runtime = detail.time && /\d/.test(detail.time) ? detail.time : undefined;
+
   const meta = {
     id: `kkphim:${detail.slug}`,
     type,
@@ -232,24 +265,34 @@ async function metaHandler({ id }) {
     background: detail.thumb || detail.poster,
     description: detail.content,
     releaseInfo: detail.year ? String(detail.year) : undefined,
-    genres: (detail.category || []).map((c) => c.name),
+    genres,
     country: (detail.country || []).map((c) => c.name).join(", "),
-    runtime: detail.time,
+    runtime,
     cast,
-    director: normalizeCast(detail.director),
+    director: directors,
+    links,
   };
 
   if (type === "series") {
     // Use the first server's episode list as the canonical episode/season index.
-    const primary = detail.episodes[0];
+    const primary = detail.episodes && detail.episodes[0];
     if (primary) {
-      meta.videos = primary.items.map((ep, idx) => ({
-        id: `kkphim:${detail.slug}:${ep.slug}`,
-        title: ep.name ? `Tập ${ep.name}` : `Tập ${idx + 1}`,
-        season: 1,
-        episode: idx + 1,
-        released: undefined,
-      }));
+      meta.videos = (primary.items || []).map((ep, idx) => {
+        let epTitle = ep.name ? String(ep.name).trim() : `Tập ${idx + 1}`;
+        if (
+          !epTitle.toLowerCase().startsWith("tập") &&
+          !epTitle.toLowerCase().startsWith("full")
+        ) {
+          epTitle = "Tập " + epTitle;
+        }
+        return {
+          id: `kkphim:${detail.slug}:${ep.slug}`,
+          title: epTitle,
+          season: 1,
+          episode: idx + 1,
+          released: undefined,
+        };
+      });
     }
   }
 

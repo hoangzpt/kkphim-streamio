@@ -66,19 +66,8 @@ function buildCatalogEntry(id, name, types, filterOptions) {
 }
 
 async function buildManifest() {
-  let genreOptions = POPULAR_GENRES;
-  let countryOptions = POPULAR_COUNTRIES;
-
-  try {
-    const list = await kkphim.genres();
-    if (list && list.length) {
-      // Giữ tối đa 20 thể loại phổ biến để manifest không bị vượt giới hạn 8KB của Stremio
-      const names = list.map((g) => g.name);
-      if (names.length <= 20) genreOptions = names;
-    }
-  } catch (e) {
-    // keep fallback
-  }
+  const genreOptions = POPULAR_GENRES;
+  const countryOptions = POPULAR_COUNTRIES;
 
   const catalogs = [
     // 1. Nhóm danh mục chính
@@ -102,7 +91,7 @@ async function buildManifest() {
 
   return {
     id: "org.kkphim.stremio.addon",
-    version: "1.3.0",
+    version: "1.3.1",
     name: "KKPhim Vietsub",
     description:
       "Xem phim Vietsub, Thuyết Minh, Lồng Tiếng từ KKPhim. Hỗ trợ xem trực tiếp từ trang chủ Stremio (IMDb), tìm phim qua diễn viên (TMDB), phim chiếu rạp, phim lẻ, phim bộ, lọc theo Quốc gia và Năm.",

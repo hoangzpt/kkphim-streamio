@@ -1,9 +1,10 @@
 const fetch = globalThis.fetch || require("node-fetch");
 const kkphim = require("./kkphimApi");
 
-// In-memory cache cho kết quả map IMDb -> KKPhim
-const imdbCache = new Map();
-const CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 tiếng
+const { BoundedCache } = require("./cache");
+
+// In-memory bounded cache cho kết quả map IMDb -> KKPhim (tối đa 500 mục, TTL 12 tiếng)
+const imdbCache = new BoundedCache(500, 12 * 60 * 60 * 1000);
 
 function cleanString(str) {
   if (!str) return "";
@@ -100,7 +101,7 @@ async function resolveImdb(type, id) {
 
   // Kiểm tra cache
   const cached = imdbCache.get(cacheKey);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
+  if (cached) {
     return {
       slug: cached.slug,
       season,
@@ -160,7 +161,7 @@ async function resolveImdb(type, id) {
   };
 
   // Lưu cache
-  imdbCache.set(cacheKey, { ...result, time: Date.now() });
+  imdbCache.set(cacheKey, result);
 
   return result;
 }

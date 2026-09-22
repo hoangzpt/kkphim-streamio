@@ -24,7 +24,7 @@ module.exports = async (req, res) => {
       headers["Origin"] = ref.replace(/\/$/, "");
     }
 
-    const upstream = await fetch(target, { headers, redirect: "follow" });
+    const upstream = await fetch(target, { headers, redirect: "follow", timeout: 8000 });
     const contentType = upstream.headers.get("content-type") || "";
 
     res.setHeader("Access-Control-Allow-Origin", "*");

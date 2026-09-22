@@ -3,18 +3,19 @@ const fetch = require("node-fetch");
 const BASE = "https://phimapi.com";
 const DEFAULT_IMG_CDN = "https://phimimg.com";
 
-// tiny in-memory cache (survives warm serverless invocations)
-const cache = new Map();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const { BoundedCache } = require("./cache");
+
+// Bounded in-memory cache (tối đa 500 mục, TTL 5 phút)
+const cache = new BoundedCache(500, 5 * 60 * 1000);
 
 async function cachedGet(url) {
   const hit = cache.get(url);
-  if (hit && Date.now() - hit.time < CACHE_TTL_MS) return hit.data;
+  if (hit !== undefined) return hit;
 
-  const res = await fetch(url, { timeout: 15000 });
+  const res = await fetch(url, { timeout: 7500 });
   if (!res.ok) throw new Error(`kkphim api ${res.status} for ${url}`);
   const data = await res.json();
-  cache.set(url, { data, time: Date.now() });
+  cache.set(url, data);
   return data;
 }
 

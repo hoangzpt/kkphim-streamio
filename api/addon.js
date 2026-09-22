@@ -18,6 +18,9 @@ async function buildRouter() {
 
 module.exports = async (req, res) => {
   try {
+    if (req.url && req.url.includes("manifest.json")) {
+      res.setHeader("Cache-Control", "max-age=3600, stale-while-revalidate=86400, public");
+    }
     if (!routerPromise) routerPromise = buildRouter();
     const router = await routerPromise;
     router(req, res, () => {

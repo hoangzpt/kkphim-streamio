@@ -1,11 +1,12 @@
 const fetch = globalThis.fetch || require("node-fetch");
 
+const { BoundedCache } = require("./cache");
+
 const BASE_URL = "https://api.themoviedb.org/3";
 
-// In-memory cache cho kết quả tìm diễn viên và phim
-const personCache = new Map();
-const creditsCache = new Map();
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 tiếng
+// In-memory bounded cache cho kết quả tìm diễn viên và phim (tối đa 500 mục, TTL 24 tiếng)
+const personCache = new BoundedCache(500, 24 * 60 * 60 * 1000);
+const creditsCache = new BoundedCache(500, 24 * 60 * 60 * 1000);
 
 function getAuth() {
   const rawKey = (process.env.TMDB_API_KEY || "").trim();
@@ -40,8 +41,8 @@ async function searchPerson(name) {
 
   const cleanName = String(name).trim().toLowerCase();
   const cached = personCache.get(cleanName);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-    return cached.data;
+  if (cached !== undefined) {
+    return cached;
   }
 
   try {
@@ -66,7 +67,7 @@ async function searchPerson(name) {
       popularity: bestPerson.popularity,
     };
 
-    personCache.set(cleanName, { data: result, time: Date.now() });
+    personCache.set(cleanName, result);
     return result;
   } catch (e) {
     console.error("TMDB searchPerson error:", e.message);
@@ -82,8 +83,8 @@ async function getPersonCredits(personId) {
   if (!auth || !personId) return [];
 
   const cached = creditsCache.get(personId);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-    return cached.data;
+  if (cached !== undefined) {
+    return cached;
   }
 
   try {
@@ -110,7 +111,7 @@ async function getPersonCredits(personId) {
       character: c.character || "",
     }));
 
-    creditsCache.set(personId, { data: credits, time: Date.now() });
+    creditsCache.set(personId, credits);
     return credits;
   } catch (e) {
     console.error("TMDB getPersonCredits error:", e.message);
@@ -127,8 +128,8 @@ async function getMovieCast(tmdbId, mediaType = "movie") {
 
   const cacheKey = `cast:${mediaType}:${tmdbId}`;
   const cached = creditsCache.get(cacheKey);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
-    return cached.data;
+  if (cached !== undefined) {
+    return cached;
   }
 
   try {
@@ -139,7 +140,7 @@ async function getMovieCast(tmdbId, mediaType = "movie") {
 
     const data = await res.json();
     const cast = (data.cast || []).slice(0, 15).map((c) => c.name).filter(Boolean);
-    creditsCache.set(cacheKey, { data: cast, time: Date.now() });
+    creditsCache.set(cacheKey, cast);
     return cast;
   } catch (e) {
     return [];

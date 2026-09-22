@@ -168,6 +168,7 @@ async function getDetail(slug) {
     episodeTotal: movie.episode_total,
     actor: movie.actor || [],
     director: movie.director || [],
+    tmdbId: (movie.tmdb && movie.tmdb.id) || null,
     category: movie.category || [],
     country: movie.country || [],
     episodes,

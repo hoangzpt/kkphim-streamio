@@ -37,46 +37,87 @@ function itemToMeta(item) {
   };
 }
 
+function normalizeCast(actors) {
+  if (!actors) return [];
+  const list = Array.isArray(actors) ? actors : [actors];
+  const result = [];
+  for (const item of list) {
+    if (!item) continue;
+    // Tách các chuỗi có nhiều diễn viên ngăn cách bằng dấu phẩy, chấm phẩy hoặc gạch chéo
+    const parts = String(item).split(/[,;/]/);
+    for (const part of parts) {
+      const clean = part.trim();
+      if (
+        clean &&
+        clean !== "Đang cập nhật" &&
+        clean !== "N/A" &&
+        clean !== "Updating..." &&
+        clean.length > 1
+      ) {
+        result.push(clean);
+      }
+    }
+  }
+  return [...new Set(result)];
+}
+
 async function catalogHandler({ type, id, extra }) {
   extra = extra || {};
   const page = extra.skip ? Math.floor(Number(extra.skip) / 24) + 1 : 1;
 
   let result;
   if (extra.search) {
-    result = await kkphim.search(extra.search, page);
-
-    // Nếu tìm kiếm theo tên phim không ra và có TMDB_API_KEY, thử tìm xem có phải tên Diễn viên không
-    if ((!result.items || result.items.length === 0) && process.env.TMDB_API_KEY) {
+    // 1. Kiểm tra xem từ khóa có phải tên Diễn Viên trên TMDB không
+    if (process.env.TMDB_API_KEY) {
       try {
         const person = await tmdbApi.searchPerson(extra.search);
-        if (person) {
+        if (
+          person &&
+          (person.popularity > 1 ||
+            person.name.toLowerCase() === extra.search.trim().toLowerCase())
+        ) {
           const credits = await tmdbApi.getPersonCredits(person.id);
-          const matchedItems = [];
-          const seenSlugs = new Set();
+          if (credits.length > 0) {
+            const matchedItems = [];
+            const seenSlugs = new Set();
 
-          for (const credit of credits.slice(0, 15)) {
-            const query = credit.originalTitle || credit.title;
-            if (!query) continue;
-            try {
-              const searchRes = await kkphim.search(query);
-              for (const item of (searchRes.items || []).slice(0, 2)) {
-                if (!seenSlugs.has(item.slug)) {
-                  seenSlugs.add(item.slug);
-                  matchedItems.push(item);
-                }
+            for (const credit of credits.slice(0, 20)) {
+              const searchQueries = [credit.originalTitle, credit.title].filter(Boolean);
+              let found = false;
+
+              for (const q of searchQueries) {
+                try {
+                  const sRes = await kkphim.search(q);
+                  if (sRes.items && sRes.items.length > 0) {
+                    for (const item of sRes.items.slice(0, 2)) {
+                      if (!seenSlugs.has(item.slug)) {
+                        seenSlugs.add(item.slug);
+                        matchedItems.push(item);
+                        found = true;
+                        break;
+                      }
+                    }
+                  }
+                } catch (err) {}
+                if (found) break;
               }
-            } catch (e) {}
 
-            if (matchedItems.length >= 20) break;
-          }
+              if (matchedItems.length >= 24) break;
+            }
 
-          if (matchedItems.length > 0) {
-            result = { items: matchedItems };
+            if (matchedItems.length > 0) {
+              result = { items: matchedItems };
+            }
           }
         }
       } catch (err) {
         console.error("Lỗi tìm phim theo diễn viên qua TMDB:", err);
       }
+    }
+
+    // 2. Nếu không phải diễn viên hoặc TMDB không ra phim, tìm trực tiếp trên KKPhim
+    if (!result || !result.items || result.items.length === 0) {
+      result = await kkphim.search(extra.search, page);
     }
   } else if (id === "kkphim-theo-nam") {
     // Dropdown genre ở catalog này chứa năm phát hành
@@ -138,9 +179,15 @@ async function catalogHandler({ type, id, extra }) {
     }
   }
 
-  const metas = (result && result.items ? result.items : [])
+  let metas = (result && result.items ? result.items : [])
     .filter((it) => toStremioType(it) === type)
     .map(itemToMeta);
+
+  // Khi tìm kiếm diễn viên, nếu lọc theo type (ví dụ type: movie) mà diễn viên đó chỉ đóng series (hoặc ngược lại),
+  // hiển thị tất cả các phim của diễn viên đó để người dùng không bị thấy danh sách trống!
+  if (extra.search && metas.length === 0 && result && result.items && result.items.length > 0) {
+    metas = result.items.map(itemToMeta);
+  }
 
   return { metas };
 }
@@ -166,6 +213,17 @@ async function metaHandler({ id }) {
   const detail = await kkphim.getDetail(slug);
   const type = toStremioType(detail);
 
+  let cast = normalizeCast(detail.actor);
+  // Nếu KKPhim thiếu dữ liệu diễn viên và có TMDB ID, bổ sung diễn viên từ TMDB
+  if (cast.length === 0 && detail.tmdbId && process.env.TMDB_API_KEY) {
+    try {
+      const tmdbCast = await tmdbApi.getMovieCast(detail.tmdbId, type);
+      if (tmdbCast && tmdbCast.length > 0) {
+        cast = tmdbCast;
+      }
+    } catch (e) {}
+  }
+
   const meta = {
     id: `kkphim:${detail.slug}`,
     type,
@@ -177,8 +235,8 @@ async function metaHandler({ id }) {
     genres: (detail.category || []).map((c) => c.name),
     country: (detail.country || []).map((c) => c.name).join(", "),
     runtime: detail.time,
-    cast: (detail.actor || []).filter(Boolean),
-    director: (detail.director || []).filter(Boolean),
+    cast,
+    director: normalizeCast(detail.director),
   };
 
   if (type === "series") {

@@ -118,7 +118,36 @@ async function getPersonCredits(personId) {
   }
 }
 
+/**
+ * Lấy danh sách diễn viên của một bộ phim theo TMDB ID (nếu KKPhim thiếu dữ liệu diễn viên)
+ */
+async function getMovieCast(tmdbId, mediaType = "movie") {
+  const auth = getAuth();
+  if (!auth || !tmdbId) return [];
+
+  const cacheKey = `cast:${mediaType}:${tmdbId}`;
+  const cached = creditsCache.get(cacheKey);
+  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  try {
+    const endpoint = mediaType === "series" || mediaType === "tv" ? "tv" : "movie";
+    const url = `${BASE_URL}/${endpoint}/${tmdbId}/credits?language=vi-VN${auth.param}`;
+    const res = await fetch(url, { headers: auth.headers, timeout: 8000 });
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    const cast = (data.cast || []).slice(0, 15).map((c) => c.name).filter(Boolean);
+    creditsCache.set(cacheKey, { data: cast, time: Date.now() });
+    return cast;
+  } catch (e) {
+    return [];
+  }
+}
+
 module.exports = {
   searchPerson,
   getPersonCredits,
+  getMovieCast,
 };

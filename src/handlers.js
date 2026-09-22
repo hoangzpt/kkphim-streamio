@@ -1,5 +1,6 @@
 const kkphim = require("./kkphimApi");
 const imdbMapper = require("./imdbMapper");
+const tmdbApi = require("./tmdbApi");
 
 const TYPE_LIST_MAP = {
   "kkphim-phim-le": "phim-le",
@@ -43,6 +44,40 @@ async function catalogHandler({ type, id, extra }) {
   let result;
   if (extra.search) {
     result = await kkphim.search(extra.search, page);
+
+    // Nếu tìm kiếm theo tên phim không ra và có TMDB_API_KEY, thử tìm xem có phải tên Diễn viên không
+    if ((!result.items || result.items.length === 0) && process.env.TMDB_API_KEY) {
+      try {
+        const person = await tmdbApi.searchPerson(extra.search);
+        if (person) {
+          const credits = await tmdbApi.getPersonCredits(person.id);
+          const matchedItems = [];
+          const seenSlugs = new Set();
+
+          for (const credit of credits.slice(0, 15)) {
+            const query = credit.originalTitle || credit.title;
+            if (!query) continue;
+            try {
+              const searchRes = await kkphim.search(query);
+              for (const item of (searchRes.items || []).slice(0, 2)) {
+                if (!seenSlugs.has(item.slug)) {
+                  seenSlugs.add(item.slug);
+                  matchedItems.push(item);
+                }
+              }
+            } catch (e) {}
+
+            if (matchedItems.length >= 20) break;
+          }
+
+          if (matchedItems.length > 0) {
+            result = { items: matchedItems };
+          }
+        }
+      } catch (err) {
+        console.error("Lỗi tìm phim theo diễn viên qua TMDB:", err);
+      }
+    }
   } else if (id === "kkphim-theo-nam") {
     // Dropdown genre ở catalog này chứa năm phát hành
     const year = extra.genre || String(new Date().getFullYear());

@@ -102,10 +102,10 @@ async function buildManifest() {
 
   return {
     id: "org.kkphim.stremio.addon",
-    version: "1.2.0",
+    version: "1.3.0",
     name: "KKPhim Vietsub",
     description:
-      "Xem phim Vietsub, Thuyết Minh, Lồng Tiếng từ KKPhim. Hỗ trợ xem trực tiếp từ trang chủ Stremio (IMDb), phim chiếu rạp, phim lẻ, phim bộ, lọc theo Quốc gia và Năm.",
+      "Xem phim Vietsub, Thuyết Minh, Lồng Tiếng từ KKPhim. Hỗ trợ xem trực tiếp từ trang chủ Stremio (IMDb), tìm phim qua diễn viên (TMDB), phim chiếu rạp, phim lẻ, phim bộ, lọc theo Quốc gia và Năm.",
     logo: "https://phimimg.com/favicon.ico",
     resources: [
       "catalog",
